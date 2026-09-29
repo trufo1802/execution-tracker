@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Execution Tracker</title>
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --panel2:#f0f2f5; --line:#dfe3e8; --text:#1a2029; --muted:#667085;
+  --buy:#0a7d5a; --buy-bg:#e3f5ee; --buy-line:#a7dcc8;
+  --sell:#c2372c; --sell-bg:#fdeceb; --sell-line:#f2b5b0;
+  --accent:#2f5fd0; --accent-bg:#e8eefb; --warn:#b45f06; --warn-bg:#fff2dc;
+  --done:#0a7d5a; --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1319; --panel:#171c24; --panel2:#1e2530; --line:#2b3441; --text:#e6eaf0; --muted:#8b96a7;
+    --buy:#3ecf9b; --buy-bg:#12291f; --buy-line:#1f5a44;
+    --sell:#ff7a6e; --sell-bg:#2e1715; --sell-line:#6b2a25;
+    --accent:#7aa2ff; --accent-bg:#1a2542; --warn:#f0b35a; --warn-bg:#33270f;
+    --done:#3ecf9b; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+    --bg:#0f1319; --panel:#171c24; --panel2:#1e2530; --line:#2b3441; --text:#e6eaf0; --muted:#8b96a7;
+    --buy:#3ecf9b; --buy-bg:#12291f; --buy-line:#1f5a44;
+    --sell:#ff7a6e; --sell-bg:#2e1715; --sell-line:#6b2a25;
+    --accent:#7aa2ff; --accent-bg:#1a2542; --warn:#f0b35a; --warn-bg:#33270f;
+    --done:#3ecf9b; --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:60px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px}
+.top-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:1500px;margin:0 auto}
+h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em}
+.date{color:var(--muted);font-size:12px}
+.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px;font-weight:550;box-shadow:var(--shadow);white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ghost{background:transparent;box-shadow:none}
+.btn.small{padding:4px 9px;font-size:12px}
+.btn.danger:hover{border-color:var(--sell);color:var(--sell)}
+.overall{max-width:1500px;margin:10px auto 0;display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center}
+.stat{display:flex;flex-direction:column}
+.stat b{font-size:18px;font-weight:650}
+.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.bar{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;flex:1;min-width:160px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .25s}
+.tools{max-width:1500px;margin:10px auto 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:12px}
+.tools select,.tools input[type=text]{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.tools label{display:flex;gap:5px;align-items:center}
+
+/* panels (paste / add) */
+.wrap{max-width:1500px;margin:0 auto;padding:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;box-shadow:var(--shadow)}
+.panel h3{margin:0 0 8px;font-size:13px}
+.panel textarea{width:100%;min-height:110px;border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:8px;font-family:var(--mono);font-size:13px;resize:vertical}
+.hint{color:var(--muted);font-size:12px;margin:6px 0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.preview{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.tag{font-family:var(--mono);font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);background:var(--panel2)}
+.tag.b{background:var(--buy-bg);border-color:var(--buy-line);color:var(--buy)}
+.tag.s{background:var(--sell-bg);border-color:var(--sell-line);color:var(--sell)}
+.field{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+.field:focus,.memo:focus,.tgt:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+
+/* cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-left-width:5px;border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+.card.buy{border-left-color:var(--buy)} .card.sell{border-left-color:var(--sell)}
+.card.done{opacity:.72;background:var(--panel2)} .card.done{border-left-color:var(--done)}
+.card.over{border-color:var(--warn)}
+.ch{display:flex;align-items:center;gap:8px}
+.ccy{font-size:20px;font-weight:700;letter-spacing:.02em}
+.pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:.06em}
+.pill.buy{background:var(--buy-bg);color:var(--buy)} .pill.sell{background:var(--sell-bg);color:var(--sell)}
+.pill.done{background:var(--buy-bg);color:var(--done)} .pill.over{background:var(--warn-bg);color:var(--warn)}
+.x{border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px}
+.x:hover{color:var(--sell);background:var(--sell-bg)}
+.remain{display:flex;align-items:baseline;gap:8px;margin:8px 0 2px}
+.remain .big{font-size:34px;font-weight:700;letter-spacing:-.02em}
+.card.buy .big{color:var(--buy)} .card.sell .big{color:var(--sell)} .card.done .big{color:var(--done)}
+.remain small{color:var(--muted)}
+.meta{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12px;flex-wrap:wrap}
+.tgt{width:88px;border:1px solid transparent;background:transparent;border-radius:6px;padding:1px 4px;text-align:left;font-family:var(--mono)}
+.tgt:hover{border-color:var(--line);background:var(--panel2)}
+.pbar{height:7px;background:var(--panel2);border-radius:99px;overflow:hidden;margin:9px 0 12px}
+.card.done .pbar{background:var(--panel)}
+.pbar>i{display:block;height:100%;border-radius:99px;transition:width .25s}
+.card.buy .pbar>i,.card.done .pbar>i{background:var(--buy)} .card.sell .pbar>i{background:var(--sell)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{min-width:62px;padding:9px 10px;border-radius:9px;border:1px solid;font-family:var(--mono);font-weight:650;font-size:14px;text-align:center;transition:transform .05s}
+.chip:active{transform:scale(.95)}
+.card.buy .chip{background:var(--buy-bg);border-color:var(--buy-line);color:var(--buy)}
+.card.sell .chip{background:var(--sell-bg);border-color:var(--sell-line);color:var(--sell)}
+.chip:hover{filter:brightness(.96);border-width:1px;box-shadow:0 0 0 2px var(--accent-bg)}
+.chip.rest{background:transparent!important;border-style:dashed}
+.chip.rest span{font-family:system-ui;font-weight:600;font-size:11px;opacity:.8;margin-right:4px}
+.custom{display:flex;gap:6px;margin-top:8px}
+.custom input{flex:1;min-width:0;font-family:var(--mono)}
+.fills{margin-top:12px;border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:5px;max-height:280px;overflow:auto}
+.fill{display:grid;grid-template-columns:70px 1fr auto 22px;gap:6px;align-items:center;font-size:12px;border-radius:7px;padding:2px 4px}
+.fill .q{font-family:var(--mono);font-weight:650;text-align:right;font-size:13px}
+.fill .q.p{color:var(--buy)} .fill .q.n{color:var(--sell)}
+.fill .t{color:var(--muted);font-family:var(--mono);font-size:11px}
+.memo{width:100%;border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:4px 7px;font-size:13px}
+.memo::placeholder{color:var(--muted);opacity:.7}
+.fill.new{background:var(--accent-bg);animation:pop .5s}
+.fill.new .memo{border-color:var(--accent);background:var(--panel)}
+@keyframes pop{from{transform:scale(.96);opacity:.4}to{transform:none;opacity:1}}
+.empty{text-align:center;color:var(--muted);padding:60px 10px}
+.empty b{display:block;color:var(--text);font-size:16px;margin-bottom:6px}
+
+/* matrix layout */
+.wrap.matrix{max-width:2200px}
+.mscroll{overflow-x:auto;padding-bottom:6px}
+.grid.matrix{gap:10px}
+.slot{border:1px dashed var(--line);border-radius:12px;padding:14px;min-height:88px;color:var(--muted);opacity:.55;display:flex;flex-direction:column;gap:2px}
+.slot .ccy{font-size:16px;color:var(--muted)}
+.slot small{font-size:11px}
+.slot.blank{border:0}
+.card.compact{padding:10px}
+.card.compact .ccy{font-size:17px}
+.card.compact .remain{margin:4px 0 0}
+.card.compact .remain .big{font-size:26px}
+.card.compact .pbar{margin:6px 0 8px}
+.card.compact .chips{gap:4px}
+.card.compact .chip{min-width:0;flex:1 0 auto;padding:7px 6px;font-size:13px}
+.card.compact .custom{margin-top:6px}
+.card.compact .fills{max-height:150px;margin-top:8px}
+.card.compact .fill{grid-template-columns:54px 1fr 22px}
+.card.compact .fill .t{display:none}
+.card.compact .tgt{width:70px}
+
+/* blotter */
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+td.r,th.r{text-align:right}
+table.blot{width:auto;min-width:420px;font-size:12px}
+table.blot th,table.blot td{padding:2px 10px 2px 0;white-space:nowrap}
+table.blot td:last-child{white-space:normal;min-width:180px}
+table.blot td.r{padding-right:16px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
+.toast.show{opacity:1}
+@media (max-width:520px){.grid{grid-template-columns:1fr}.top{padding:10px 12px}.wrap{padding:12px}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-row">
+    <h1>Execution Tracker</h1>
+    <span class="date" id="date"></span>
+    <span class="spacer"></span>
+    <button class="btn primary" data-act="toggle-add">+ Add trade</button>
+    <button class="btn" data-act="toggle-paste">Paste orders</button>
+    <button class="btn" data-act="undo" title="Remove the most recent fill">↶ Undo last fill</button>
+    <button class="btn danger" data-act="new-batch" title="Clear all currencies and fills">Clear all</button>
+    <button class="btn" data-act="restore" id="restoreBtn" hidden title="Bring back the batch you last cleared">Restore cleared</button>
+    <button class="btn ghost" data-act="theme" title="Toggle light / dark">◐</button>
+  </div>
+  <div class="overall" id="overall"></div>
+  <div class="tools" id="tools"></div>
+</div>
+
+<div class="wrap">
+  <div id="addPanel" class="panel" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h3 style="margin:0">Add a trade</h3>
+      <button class="x" type="button" data-act="toggle-add" title="Close (Esc)">×</button>
+    </div>
+    <form class="row" id="addForm" autocomplete="off">
+      <input class="field" id="addCcy" placeholder="Currency e.g. EUR" size="14" style="text-transform:uppercase">
+      <input class="field num" id="addSize" placeholder="Size e.g. 2500 or -2500" size="18">
+      <button class="btn primary" type="submit">Add</button>
+      <button class="btn" type="button" data-act="toggle-add">Done</button>
+      <span class="hint">Positive = buy, negative = sell. Adding an existing currency updates its target.</span>
+    </form>
+  </div>
+
+  <div id="pastePanel" class="panel" hidden>
+    <h3>Paste orders from Python / Excel</h3>
+    <textarea id="pasteBox" spellcheck="false" placeholder="EUR 8300&#10;GBP 3000&#10;JPY -500&#10;&#10;…or paste two Excel rows (names row + sizes row)"></textarea>
+    <div class="hint">Accepts: one <b>CCY size</b> per line (space / tab / comma / colon), or a names row over a sizes row copied straight from Excel. Any number of currencies, any order.</div>
+    <div class="preview" id="pastePreview"></div>
+    <div class="row">
+      <label class="row" style="gap:5px"><input type="radio" name="pmode" value="replace" checked> Replace current batch</label>
+      <label class="row" style="gap:5px" title="Add currencies not already in the batch; existing ones are left untouched"><input type="radio" name="pmode" value="append"> Add to current batch</label>
+      <label class="row" style="gap:5px" title="Keep all fills so far; only change the target size of the pasted currencies"><input type="radio" name="pmode" value="update"> Update trade size</label>
+      <span class="spacer"></span>
+      <button class="btn" data-act="toggle-paste">Cancel</button>
+      <button class="btn primary" data-act="load-paste">Load</button>
+    </div>
+  </div>
+
+  <div id="layoutPanel" class="panel" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h3 style="margin:0">Matrix layout — fixed slot for each currency</h3>
+      <button class="x" type="button" data-act="toggle-layout" title="Close">×</button>
+    </div>
+    <textarea id="layoutIn" spellcheck="false" style="min-height:96px"></textarea>
+    <div class="hint">One row per line, currencies separated by spaces. Each currency keeps its slot even when done or not in today's batch (shown as a faint empty slot). Currencies not listed here are added at the end.</div>
+    <div class="row"><button class="btn small" data-act="layout-reset">Reset to default</button></div>
+  </div>
+
+  <div id="cards"></div>
+
+  <details class="panel" id="blotterBox" style="margin-top:18px">
+    <summary style="cursor:pointer;font-weight:600">Blotter &amp; export</summary>
+    <div class="row" style="margin:10px 0">
+      <button class="btn small" data-act="copy-summary">Copy summary (TSV)</button>
+      <button class="btn small" data-act="copy-fills">Copy all fills (TSV)</button>
+      <span class="hint" style="margin:0">Paste straight into Excel.</span>
+    </div>
+    <div id="blotter" style="overflow:auto"></div>
+  </details>
+
+  <div class="hint" style="margin-top:16px">
+    Data autosaves in this browser (localStorage) — use the same browser to see it again.
+    <button class="btn small" data-act="preset-edit-focus">Edit size buttons</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const KEY = "exec_tracker_v1", BKEY = "exec_tracker_v1_backup";
+const DEFAULT_PRESETS = [1000,500,400,300,250,200,150,100];
+const DEFAULT_MATRIX = "EUR GBP CHF SEK NOK\nDKK CAD MXN AUD NZD\nJPY CNH TWD KRW THB\nSGD IDR INR PHP";
+let S = load() || fresh();
+const ui = { focusFill:null, justAdded:null, showAdd:false, showPaste:false, showLayout:false };
+
+function fresh(){ return { pos:[], fills:[], presets:DEFAULT_PRESETS.slice(), sort:"pasted", hideDone:false, layout:"flow", matrixText:DEFAULT_MATRIX, date:today(), seq:1 }; }
+function today(){ return new Date().toISOString().slice(0,10); }
+function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); if(s && Array.isArray(s.pos)) return Object.assign(fresh(), s); }catch(e){} return null; }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function backup(){ try{ if(S.pos.length) localStorage.setItem(BKEY, JSON.stringify(S)); }catch(e){} }
+function hasBackup(){ try{ return !!localStorage.getItem(BKEY); }catch(e){ return false; } }
+const nid = () => S.seq++;
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => (Math.round(n*1e6)/1e6).toLocaleString("en-US",{maximumFractionDigits:4});
+const sfmt = n => (n>0?"+":"") + fmt(n);
+const sgn = n => n>0 ? 1 : n<0 ? -1 : 0;
+const hhmmss = ts => new Date(ts).toLocaleTimeString("en-GB");
+const dtstr = ts => new Date(ts).toLocaleDateString("en-CA") + " " + hhmmss(ts);
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove("show"),1800); }
+
+function calc(p){
+  const filled = S.fills.filter(f=>f.pid===p.id).reduce((a,f)=>a+f.qty,0);
+  const rem = Math.round((p.target - filled)*1e6)/1e6;
+  const dir = sgn(rem) || sgn(p.target);
+  const over = rem!==0 && sgn(rem)!==sgn(p.target);
+  const pct = Math.max(0, Math.min(1, filled/p.target));
+  return { filled, rem, dir, over, done: rem===0, pct };
+}
+
+/* ---------- parsing ---------- */
+function parseNum(tok){
+  let t = tok.replace(/−/g,"-").replace(/,/g,"");
+  const paren = /^\((.*)\)$/.exec(t); if(paren) t = "-"+paren[1];
+  return /^[+-]?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null;
+}
+const isName = t => /^[A-Za-z][A-Za-z0-9\/._-]*$/.test(t);
+function parseOrders(text){
+  const lines = text.replace(/−/g,"-").split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const toks = l => l.replace(/(\d),(?=\d{3}(\D|$))/g,"$1").split(/[\t,;:=\s]+/).filter(Boolean);
+  const L = lines.map(toks);
+  const out = [];
+  // horizontal: names row over numbers row
+  if(L.length>=2){
+    const n0 = L[0], nums = L[1].filter(t=>parseNum(t)!==null);
+    if(n0.every(isName) && nums.length && nums.length===L[1].length - (L[1].length-nums.length) && L[1].filter(t=>parseNum(t)===null).length<=1){
+      let names = n0; if(names.length===nums.length+1) names = names.slice(1);
+      if(names.length===nums.length){
+        names.forEach((c,i)=>out.push({ccy:c.toUpperCase(), target:parseNum(nums[i])}));
+        return dedupe(out.filter(o=>o.target));
+      }
+    }
+  }
+  // vertical / inline pairs
+  const flat = L.flat();
+  for(let i=0;i<flat.length;i++){
+    if(isName(flat[i]) && i+1<flat.length && parseNum(flat[i+1])!==null){ out.push({ccy:flat[i].toUpperCase(), target:parseNum(flat[i+1])}); i++; }
+  }
+  if(!out.length){
+    for(let i=0;i<flat.length-1;i++){
+      if(parseNum(flat[i])!==null && isName(flat[i+1])){ out.push({ccy:flat[i+1].toUpperCase(), target:parseNum(flat[i])}); i++; }
+    }
+  }
+  return dedupe(out.filter(o=>o.target));
+}
+function dedupe(list){ const m = new Map(); list.forEach(o=>m.set(o.ccy,o)); return [...m.values()]; }
+
+/* ---------- actions ---------- */
+function addFill(pid, qty, memo){
+  const p = S.pos.find(x=>x.id===pid); if(!p || !qty) return;
+  const f = { id:nid(), pid, qty, memo:memo||"", ts:Date.now() };
+  S.fills.push(f); ui.focusFill = f.id; ui.justAdded = f.id;
+  save(); render();
+}
+function upsertPos(ccy, target){
+  ccy = ccy.trim().toUpperCase(); if(!ccy || !target) return;
+  const ex = S.pos.find(p=>p.ccy===ccy);
+  if(ex) ex.target = target; else S.pos.push({ id:nid(), ccy, target });
+}
+const acts = {
+  "toggle-add"(){ ui.showAdd=!ui.showAdd; if(ui.showAdd) ui.showPaste=false; render(); if(ui.showAdd) $("#addCcy").focus(); },
+  "toggle-paste"(){ ui.showPaste=!ui.showPaste; if(ui.showPaste) ui.showAdd=false; render(); if(ui.showPaste) $("#pasteBox").focus(); },
+  "load-paste"(){
+    const rows = parseOrders($("#pasteBox").value);
+    if(!rows.length){ toast("Nothing parsed"); return; }
+    const mode = document.querySelector('input[name=pmode]:checked').value;
+    if(mode==="replace"){ if(S.pos.length && !confirm("Replace current batch? (fills will be cleared; you can restore the last cleared batch)")) return; backup(); S.pos=[]; S.fills=[]; S.date=today(); }
+    let added=0, updated=0, skipped=0;
+    rows.forEach(r=>{
+      const ex = S.pos.find(p=>p.ccy===r.ccy);
+      if(mode==="append" && ex){ skipped++; return; }
+      if(ex) updated++; else added++;
+      upsertPos(r.ccy, r.target);
+    });
+    $("#pasteBox").value=""; ui.showPaste=false; save(); render();
+    toast(mode==="update" ? `Updated ${updated}, added ${added} — fills kept`
+        : mode==="append" ? `Added ${added}${skipped?`, skipped ${skipped} already in batch`:""}`
+        : `Loaded ${rows.length} currencies`);
+  },
+  "undo"(){
+    const f = S.fills[S.fills.length-1]; if(!f){ toast("No fills"); return; }
+    const p = S.pos.find(x=>x.id===f.pid);
+    S.fills.pop(); save(); render(); toast(`Removed ${p?p.ccy:""} ${sfmt(f.qty)}`);
+  },
+  "theme"(){
+    const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");
+    const nx = cur==="dark"?"light":"dark"; document.documentElement.dataset.theme = nx;
+    try{ localStorage.setItem("exec_tracker_theme", nx); }catch(e){}
+  },
+  "new-batch"(){
+    if(!S.pos.length){ toast("Nothing to clear"); return; }
+    if(!confirm(`Clear all ${S.pos.length} currencies and ${S.fills.length} fills?\n\nYou can bring them back with "Restore cleared".`)) return;
+    backup(); const keep={presets:S.presets,layout:S.layout,matrixText:S.matrixText}; S = Object.assign(fresh(), keep); save(); render();
+  },
+  "restore"(){ try{ const b=JSON.parse(localStorage.getItem(BKEY)); if(b){ S=Object.assign(fresh(),b,{layout:S.layout,matrixText:S.matrixText}); save(); render(); toast("Restored"); } }catch(e){} },
+  "toggle-layout"(){ ui.showLayout=!ui.showLayout; render(); },
+  "layout-reset"(){ S.matrixText=DEFAULT_MATRIX; save(); render(); },
+  "fill"(el){ addFill(+el.dataset.pid, +el.dataset.qty); },
+  "custom"(el){ doCustom(+el.dataset.pid); },
+  "del-fill"(el){ const id=+el.dataset.id; S.fills=S.fills.filter(f=>f.id!==id); save(); render(); },
+  "del-pos"(el){
+    const id=+el.dataset.id; const n=S.fills.filter(f=>f.pid===id).length;
+    if(n && !confirm(`Delete this currency and its ${n} fill(s)?`)) return;
+    S.pos=S.pos.filter(p=>p.id!==id); S.fills=S.fills.filter(f=>f.pid!==id); save(); render();
+  },
+  "copy-summary"(){
+    const rows=[["ccy","target","done","remaining"]].concat(S.pos.map(p=>{const c=calc(p); return [p.ccy,p.target,c.filled,c.rem];}));
+    copyTSV(rows);
+  },
+  "copy-fills"(){
+    const name=id=>(S.pos.find(p=>p.id===id)||{}).ccy;
+    copyTSV([["date time","ccy","qty","memo"]].concat(S.fills.map(f=>[dtstr(f.ts),name(f.pid),f.qty,f.memo])));
+  },
+  "preset-edit-focus"(){ const i=$("#presetIn"); if(i){ i.scrollIntoView({block:"center"}); i.focus(); i.select(); } window.scrollTo(0,0); }
+};
+function doCustom(pid){
+  const inp = document.querySelector(`input.cust[data-pid="${pid}"]`); if(!inp) return;
+  const raw = inp.value.trim().replace(/−/g,"-"); if(!raw) return;
+  const n = parseNum(raw.replace(/^\+/,"")); if(n===null || n===0){ toast("Bad number"); return; }
+  const p = S.pos.find(x=>x.id===pid), c = calc(p);
+  const explicit = /^[+-]/.test(raw);
+  const qty = explicit ? (raw[0]==="-" ? -Math.abs(n) : Math.abs(n)) : c.dir*Math.abs(n);
+  inp.value = "";
+  addFill(pid, qty);
+}
+function copyTSV(rows){
+  const txt = rows.map(r=>r.join("\t")).join("\n");
+  const ok = () => toast("Copied — paste into Excel");
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(ok, ()=>fallback()); } else fallback();
+  function fallback(){ const t=document.createElement("textarea"); t.value=txt; document.body.appendChild(t); t.select(); try{ document.execCommand("copy"); ok(); }catch(e){ toast("Copy failed"); } t.remove(); }
+}
+
+/* ---------- render ---------- */
+function ordered(){
+  let list = S.pos.slice();
+  const info = new Map(list.map(p=>[p.id,calc(p)]));
+  if(S.hideDone) list = list.filter(p=>!info.get(p.id).done);
+  if(S.sort==="remaining") list.sort((a,b)=>Math.abs(info.get(b.id).rem)-Math.abs(info.get(a.id).rem));
+  else if(S.sort==="open") list.sort((a,b)=>(info.get(a.id).done-info.get(b.id).done));
+  return list;
+}
+function matrixCells(){
+  const rows = S.matrixText.split(/\r?\n/).map(l=>l.split(/[\s,;]+/).filter(Boolean).map(s=>s.toUpperCase())).filter(r=>r.length);
+  const cols = Math.max(1, ...rows.map(r=>r.length)), cells = [], used = new Set();
+  rows.forEach(r=>{ for(let i=0;i<cols;i++){ const c=r[i]; if(c && used.has(c)) cells.push(null); else { cells.push(c||null); if(c) used.add(c); } } });
+  S.pos.filter(p=>!used.has(p.ccy)).forEach(p=>cells.push(p.ccy));
+  while(cells.length % cols) cells.push(null);
+  return { cols, cells };
+}
+function matrixHTML(){
+  const { cols, cells } = matrixCells();
+  const html = cells.map(c=>{
+    if(c===null) return `<div class="slot blank"></div>`;
+    const p = S.pos.find(x=>x.ccy===c);
+    return p ? cardHTML(p,true) : `<div class="slot"><span class="ccy">${esc(c)}</span><small>no order</small></div>`;
+  }).join("");
+  return `<div class="mscroll"><div class="grid matrix" style="grid-template-columns:repeat(${cols},minmax(200px,1fr))">${html}</div></div>`;
+}
+function cardHTML(p, compact){
+  const c = calc(p), side = p.target>0?"buy":"sell";
+  const cls = ["card", side, c.done?"done":"", c.over?"over":"", compact?"compact":""].join(" ");
+  const pill = c.done ? `<span class="pill done">DONE ✓</span>` : c.over ? `<span class="pill over">OVERFILLED</span>` : `<span class="pill ${side}">${c.dir>0?"BUY":"SELL"}</span>`;
+  let chips = "";
+  if(!c.done){
+    const abs = Math.abs(c.rem);
+    chips = S.presets.filter(v=>v<=abs).map(v=>`<button class="chip" data-act="fill" data-pid="${p.id}" data-qty="${c.dir*v}">${c.dir>0?"+":"−"}${fmt(v)}</button>`).join("");
+    if(!S.presets.includes(abs)) chips += `<button class="chip rest" data-act="fill" data-pid="${p.id}" data-qty="${c.rem}"><span>Rest</span>${c.rem>0?"+":"−"}${fmt(abs)}</button>`;
+  }
+  const controls = c.done ? "" : `
+    <div class="chips">${chips}</div>
+    <div class="custom">
+      <input class="field cust num" data-pid="${p.id}" inputmode="decimal" placeholder="custom size (${c.dir>0?"+":"−"} implied)" autocomplete="off">
+      <button class="btn" data-act="custom" data-pid="${p.id}">Fill</button>
+    </div>`;
+  const fills = S.fills.filter(f=>f.pid===p.id).slice().reverse().map(f=>`
+    <div class="fill${f.id===ui.justAdded?" new":""}">
+      <span class="q ${f.qty>0?"p":"n"}">${sfmt(f.qty)}</span>
+      <input class="memo" data-memo="${f.id}" value="${esc(f.memo)}" placeholder="memo / level…" maxlength="120" autocomplete="off">
+      <span class="t">${hhmmss(f.ts)}</span>
+      <button class="x" data-act="del-fill" data-id="${f.id}" title="Delete this fill">×</button>
+    </div>`).join("");
+  return `<div class="${cls}" data-card="${p.id}">
+    <div class="ch"><span class="ccy">${esc(p.ccy)}</span>${pill}<span class="spacer"></span>
+      <button class="x" data-act="del-pos" data-id="${p.id}" title="Remove currency">×</button></div>
+    <div class="remain"><span class="big num">${c.done?"0":sfmt(c.rem)}</span><small>left</small></div>
+    <div class="meta"><span>done <b class="num">${fmt(c.filled)}</b></span><span>·</span><span>target</span>
+      <input class="tgt" data-tgt="${p.id}" value="${fmt(p.target)}" title="Click to edit target" autocomplete="off"></div>
+    <div class="pbar"><i style="width:${(c.pct*100).toFixed(1)}%"></i></div>
+    ${controls}
+    ${fills?`<div class="fills">${fills}</div>`:""}
+  </div>`;
+}
+function render(){
+  // preserve custom inputs
+  const keep = {}; document.querySelectorAll("input.cust").forEach(i=>{ if(i.value) keep[i.dataset.pid]=i.value; });
+  const act = document.activeElement, actPid = act && act.classList && act.classList.contains("cust") ? act.dataset.pid : null;
+
+  $("#date").textContent = S.date;
+  $("#addPanel").hidden = !ui.showAdd; $("#pastePanel").hidden = !ui.showPaste;
+  $("#restoreBtn").hidden = !hasBackup();
+
+  // overall stats
+  const info = S.pos.map(p=>({p,c:calc(p)}));
+  const grossT = info.reduce((a,x)=>a+Math.abs(x.p.target),0);
+  const grossDone = info.reduce((a,x)=>a+x.c.pct*Math.abs(x.p.target),0);
+  const grossRem = info.reduce((a,x)=>a+(x.c.over?0:Math.abs(x.c.rem)),0);
+  const netT = info.reduce((a,x)=>a+x.p.target,0);
+  const netDone = info.reduce((a,x)=>a+x.c.filled,0);
+  const nDone = info.filter(x=>x.c.done).length;
+  const pct = grossT? grossDone/grossT*100 : 0;
+  $("#overall").innerHTML = S.pos.length ? `
+    <div class="stat"><b>${nDone} / ${S.pos.length}</b><span>currencies done</span></div>
+    <div class="stat"><b class="num">${sfmt(netT)}</b><span>target net</span></div>
+    <div class="stat"><b class="num">${sfmt(netDone)}</b><span>current net</span></div>
+    <div class="stat"><b class="num">${sfmt(netT-netDone)}</b><span>net left</span></div>
+    <div class="stat"><b class="num">${fmt(grossRem)}</b><span>gross left</span></div>
+    <div class="stat"><b class="num">${fmt(grossT)}</b><span>gross target</span></div>
+    <div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div><div class="stat"><b>${pct.toFixed(0)}%</b><span>complete</span></div>` : "";
+
+  $("#tools").innerHTML = `
+    <label>Layout <select id="layoutSel">
+      <option value="flow"${S.layout==="flow"?" selected":""}>Flow (cards)</option>
+      <option value="matrix"${S.layout==="matrix"?" selected":""}>Matrix (fixed slots)</option></select></label>
+    ${S.layout==="matrix" ? `<button class="btn small" data-act="toggle-layout">Edit slots</button>` : `
+    <label>Order <select id="sortSel">
+      <option value="pasted"${S.sort==="pasted"?" selected":""}>as pasted</option>
+      <option value="remaining"${S.sort==="remaining"?" selected":""}>largest left first</option>
+      <option value="open"${S.sort==="open"?" selected":""}>open first, done last</option></select></label>
+    <label><input type="checkbox" id="hideDone"${S.hideDone?" checked":""}> hide done</label>`}
+    <label>Size buttons <input type="text" id="presetIn" value="${S.presets.join(", ")}" size="30" title="Comma-separated, largest first not required"></label>`;
+
+  const matrix = S.layout==="matrix";
+  document.querySelector(".wrap").classList.toggle("matrix", matrix);
+  $("#layoutPanel").hidden = !(matrix && ui.showLayout);
+  if(matrix && ui.showLayout && document.activeElement.id!=="layoutIn") $("#layoutIn").value = S.matrixText;
+
+  const list = ordered();
+  $("#cards").innerHTML = matrix ? matrixHTML() : S.pos.length
+    ? (list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>` : `<div class="empty"><b>All done 🎉</b>Uncheck “hide done” to review.</div>`)
+    : `<div class="empty"><b>No trades loaded</b>Click <b style="display:inline">Paste orders</b> to load from Python/Excel, or <b style="display:inline">+ Add trade</b>.</div>`;
+
+  renderBlotter();
+
+  // restore
+  Object.entries(keep).forEach(([pid,v])=>{ const i=document.querySelector(`input.cust[data-pid="${pid}"]`); if(i) i.value=v; });
+  if(actPid){ const i=document.querySelector(`input.cust[data-pid="${actPid}"]`); if(i) i.focus(); }
+  if(ui.focusFill){ const m=document.querySelector(`input[data-memo="${ui.focusFill}"]`); if(m){ m.focus({preventScroll:true}); } ui.focusFill=null; }
+  ui.justAdded = null;
+  updatePreview();
+}
+function renderBlotter(){
+  const name = id => (S.pos.find(p=>p.id===id)||{}).ccy;
+  $("#blotter").innerHTML = `<table class="blot"><thead><tr><th>Date Time</th><th>CCY</th><th class="r">Qty</th><th>Memo</th></tr></thead><tbody>${
+    S.fills.slice().reverse().map(f=>`<tr><td class="num">${dtstr(f.ts)}</td><td>${esc(name(f.pid))}</td><td class="r num" style="color:var(--${f.qty>0?"buy":"sell"})">${sfmt(f.qty)}</td><td>${esc(f.memo)}</td></tr>`).join("") || `<tr><td colspan="4" class="hint">No fills yet</td></tr>`
+  }</tbody></table>`;
+}
+function updatePreview(){
+  const rows = parseOrders($("#pasteBox").value);
+  const mode = (document.querySelector('input[name=pmode]:checked')||{}).value;
+  const tagFor = r => {
+    const ex = S.pos.find(p=>p.ccy===r.ccy);
+    const note = !ex ? (mode==="update" ? " · new" : "")
+      : mode==="update" ? (ex.target===r.target ? " · same" : ` · was ${sfmt(ex.target)}`)
+      : mode==="append" ? " · skip (exists)" : "";
+    return `<span class="tag ${r.target>0?"b":"s"}">${esc(r.ccy)} ${sfmt(r.target)}${note}</span>`;
+  };
+  $("#pastePreview").innerHTML = rows.length ? rows.map(tagFor).join("") + `<span class="hint" style="margin:0 0 0 4px">${rows.length} parsed</span>` : "";
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e=>{
+  const el = e.target.closest("[data-act]"); if(!el) return;
+  const fn = acts[el.dataset.act]; if(fn) fn(el);
+});
+document.addEventListener("input", e=>{
+  const t = e.target;
+  if(t.dataset.memo){ const f=S.fills.find(x=>x.id===+t.dataset.memo); if(f){ f.memo=t.value; save(); renderBlotter(); } }
+  if(t.id==="pasteBox") updatePreview();
+  if(t.id==="presetIn"){
+    const v = t.value.split(/[\s,;]+/).map(parseNum).filter(n=>n&&n>0);
+    if(v.length){ S.presets = [...new Set(v)].sort((a,b)=>b-a); save(); }
+  }
+});
+document.addEventListener("change", e=>{
+  const t = e.target;
+  if(t.name==="pmode") updatePreview();
+  if(t.id==="layoutSel"){ S.layout=t.value; save(); render(); }
+  if(t.id==="layoutIn"){ if(t.value.trim()){ S.matrixText=t.value; save(); } render(); }
+  if(t.id==="sortSel"){ S.sort=t.value; save(); render(); }
+  if(t.id==="hideDone"){ S.hideDone=t.checked; save(); render(); }
+  if(t.id==="presetIn"){ render(); }
+  if(t.dataset.tgt){
+    const n = parseNum(t.value.replace(/−/g,"-").replace(/^\+/,""));
+    const p = S.pos.find(x=>x.id===+t.dataset.tgt);
+    if(p && n){ p.target = n; save(); }
+    render();
+  }
+});
+document.addEventListener("keydown", e=>{
+  const t = e.target;
+  if(e.key==="Enter" || e.key==="Escape"){
+    if(t.classList.contains("cust") && e.key==="Enter"){ e.preventDefault(); doCustom(+t.dataset.pid); }
+    else if(t.dataset.memo || t.dataset.tgt || t.id==="presetIn"){ e.preventDefault(); t.blur(); }
+  }
+  if(e.key==="Escape" && (ui.showAdd||ui.showPaste) && t.tagName!=="SELECT"){ ui.showAdd=false; ui.showPaste=false; render(); }
+  if(t.id==="pasteBox" && e.key==="Enter" && (e.ctrlKey||e.metaKey)) acts["load-paste"]();
+});
+$("#addForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const ccy=$("#addCcy").value, n=parseNum($("#addSize").value.replace(/−/g,"-").replace(/^\+/,""));
+  if(!ccy.trim() || !n){ toast("Need currency and non-zero size"); return; }
+  upsertPos(ccy, n); $("#addCcy").value=""; $("#addSize").value=""; save(); render(); $("#addCcy").focus();
+});
+try{ const th=localStorage.getItem("exec_tracker_theme"); if(th) document.documentElement.dataset.theme=th; }catch(e){}
+render();
+</script>
+</body>
+</html>
